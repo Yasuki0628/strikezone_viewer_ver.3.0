@@ -1,0 +1,20 @@
+{
+  "name": "STRIKE ZONE LIVE — ストライクゾーン・ライブビューアー",
+  "short_name": "StrikeZone",
+  "description": "公認野球規則 定義74に基づき、打者ごとのストライクゾーンをカメラ映像に重ねて表示するツール",
+  "start_url": "./index.html",
+  "scope": "./",
+  "id": "./index.html",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0A0E14",
+  "theme_color": "#0A0E14",
+  "lang": "ja",
+  "categories": ["sports", "utilities"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -1,0 +1,1180 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>STRIKE ZONE LIVE — ストライクゾーン・ライブビューアー</title>
+<meta name="description" content="公認野球規則 定義74に基づき、打者ごとのストライクゾーンをカメラ映像に重ねて自動生成・可視化するツール">
+
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0A0E14">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="StrikeZone">
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Roboto+Mono:wght@400;500;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0A0E14; --panel:rgba(11,16,22,0.80); --panel-solid:#101720;
+    --turf:#16301F; --chalk:#F2EFE6; --chalk-dim:#B9C0C6;
+    --amber:#FFB84D; --lime:#D7FF3E; --foul:#E4572E; --sky:#7FD8FF;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--chalk);font-family:'Noto Sans JP',system-ui,sans-serif;overflow:hidden;}
+  .display{font-family:'Oswald',sans-serif;letter-spacing:.02em;}
+  .mono{font-family:'Roboto Mono',monospace;}
+  #app{position:fixed;inset:0;}
+
+  /* ---------- START SCREEN ---------- */
+  #startScreen{
+    position:absolute;inset:0;display:flex;flex-direction:column;
+    background:radial-gradient(120% 90% at 50% -10%, rgba(215,255,62,0.08), transparent 55%),
+      linear-gradient(180deg,#0A0E14 0%, #0D1620 55%, #12241A 100%);
+    padding:max(24px,env(safe-area-inset-top)) 22px max(24px,env(safe-area-inset-bottom));
+    overflow-y:auto;
+  }
+  .brand{display:flex;align-items:baseline;gap:10px;margin-bottom:4px;}
+  .brand .mark{width:14px;height:14px;border-radius:3px;background:var(--lime);box-shadow:0 0 14px rgba(215,255,62,.6);flex:none;}
+  .brand h1{font-size:21px;margin:0;font-weight:700;}
+  .brand .tag{font-size:11.5px;color:var(--chalk-dim);}
+  .lede{font-size:12.5px;line-height:1.7;color:var(--chalk-dim);margin:12px 0 16px;}
+  .lede b{color:var(--chalk);font-weight:600;}
+
+  .rule-card{background:var(--panel-solid);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:13px 15px;margin-bottom:14px;}
+  .rule-card .k{font-size:10.5px;color:var(--amber);letter-spacing:.06em;margin-bottom:5px;}
+  .rule-card p{font-size:11.8px;line-height:1.7;color:var(--chalk-dim);margin:0;}
+  .rule-card.warn{border-color:rgba(228,87,46,.35);}
+  .rule-card.warn .k{color:var(--foul);}
+
+  .field-group{margin-bottom:16px;}
+  .field-group>.label{font-size:11.5px;color:var(--chalk-dim);margin-bottom:8px;font-weight:500;}
+  .segmented{display:flex;gap:8px;flex-wrap:wrap;}
+  .seg-btn{flex:1;min-width:140px;padding:12px 10px;border-radius:9px;border:1px solid rgba(255,255,255,.10);
+    background:#0E151C;color:var(--chalk-dim);font-family:'Oswald';font-size:13.5px;font-weight:500;
+    display:flex;flex-direction:column;align-items:flex-start;gap:2px;cursor:pointer;}
+  .seg-btn .sub{font-family:'Noto Sans JP';font-size:10px;opacity:.75;font-weight:400;}
+  .seg-btn.active{background:var(--turf);border-color:var(--lime);color:var(--chalk);}
+  .seg-btn.active .sub{color:var(--lime);opacity:1;}
+
+  .ball-row{display:flex;gap:8px;}
+  .ball-btn{flex:1;padding:11px 6px;border-radius:9px;border:1px solid rgba(255,255,255,.10);background:#0E151C;color:var(--chalk-dim);font-size:12.5px;text-align:center;cursor:pointer;}
+  .ball-btn .mm{display:block;font-family:'Roboto Mono';font-size:10.5px;margin-top:3px;}
+  .ball-btn.active{background:#241C0E;border-color:var(--amber);color:var(--amber);}
+
+  .toggle-row{display:flex;align-items:center;justify-content:space-between;background:#0E151C;border:1px solid rgba(255,255,255,.10);border-radius:9px;padding:12px 14px;}
+  .toggle-row .t{font-size:12.5px;}
+  .toggle-row .t .sub{display:block;font-size:10.5px;color:var(--chalk-dim);margin-top:2px;}
+  .switch{width:42px;height:24px;border-radius:14px;background:#232B33;position:relative;flex:none;cursor:pointer;transition:.15s;}
+  .switch.on{background:var(--lime);}
+  .switch .knob{position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:#fff;transition:.15s;}
+  .switch.on .knob{left:20px;background:#0A0E14;}
+
+  #startBtn{margin-top:14px;padding:16px;border:none;border-radius:10px;background:var(--lime);color:#0A0E14;font-family:'Oswald';font-weight:600;font-size:15px;cursor:pointer;}
+  #historyBtnStart{margin-top:10px;padding:13px;border:1px solid rgba(255,255,255,.16);border-radius:10px;background:transparent;color:var(--chalk-dim);font-family:'Oswald';font-size:13px;cursor:pointer;}
+  #camError{display:none;margin-top:12px;background:rgba(228,87,46,.12);border:1px solid rgba(228,87,46,.4);color:#FFCFC0;font-size:12px;line-height:1.6;padding:11px 13px;border-radius:8px;}
+  #installRow{display:none;margin-top:10px;}
+  #iosInstallHint{display:none;font-size:11px;color:var(--chalk-dim);line-height:1.7;margin-top:10px;text-align:center;}
+
+  /* ---------- CAMERA SCREEN ---------- */
+  #cameraScreen{position:absolute;inset:0;display:none;background:#000;}
+  #video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;}
+  #overlay{position:absolute;inset:0;width:100%;height:100%;touch-action:none;}
+
+  #topBar{position:absolute;top:0;left:0;right:0;padding:max(10px,env(safe-area-inset-top)) 10px 8px;
+    display:flex;gap:6px;align-items:center;flex-wrap:wrap;background:linear-gradient(180deg, rgba(0,0,0,.65), transparent);pointer-events:none;}
+  #topBar>*{pointer-events:auto;}
+  .pill{padding:7px 11px;border-radius:20px;background:var(--panel);border:1px solid rgba(255,255,255,.14);
+    color:var(--chalk);font-size:11.5px;font-family:'Oswald';display:flex;align-items:center;gap:5px;backdrop-filter:blur(6px);cursor:pointer;white-space:nowrap;}
+  .pill.on{border-color:var(--lime);color:var(--lime);}
+  .pill.warn{border-color:var(--amber);color:var(--amber);}
+  .pill.rec{border-color:var(--foul);color:var(--foul);}
+  .pill.ghost{opacity:.85;}
+  .dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none;}
+  .spacer{flex:1;}
+
+  #instructionBar{position:absolute;left:10px;right:10px;bottom:132px;background:var(--panel);border:1px solid rgba(215,255,62,.35);border-radius:12px;padding:13px 15px;backdrop-filter:blur(8px);display:none;}
+  #instructionBar .step{font-size:10.5px;color:var(--lime);letter-spacing:.04em;margin-bottom:4px;}
+  #instructionBar .txt{font-size:14px;line-height:1.5;}
+  #instructionBar .cancel{margin-top:8px;font-size:11px;color:var(--chalk-dim);text-decoration:underline;cursor:pointer;}
+
+  #infoPanel{position:absolute;left:10px;bottom:max(64px,calc(env(safe-area-inset-bottom) + 54px));background:var(--panel);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:9px 13px;backdrop-filter:blur(8px);font-size:10.8px;color:var(--chalk-dim);display:none;line-height:1.8;max-width:62vw;}
+  #infoPanel b{color:var(--chalk);font-family:'Roboto Mono';}
+
+  #controlDock{position:absolute;left:0;right:0;bottom:0;padding:8px 10px max(10px,env(safe-area-inset-bottom));display:flex;gap:6px;overflow-x:auto;background:linear-gradient(0deg, rgba(0,0,0,.6), transparent);}
+  #controlDock .pill{flex:none;}
+
+  .handle{position:absolute;width:26px;height:26px;border-radius:50%;background:rgba(255,184,77,.18);border:2px solid var(--amber);transform:translate(-50%,-50%);touch-action:none;}
+  .handle::after{content:'';position:absolute;inset:8px;border-radius:50%;background:var(--amber);}
+
+  /* ---------- MODAL / SHEET (shared) ---------- */
+  .overlayScreen{position:absolute;inset:0;background:rgba(5,8,11,.78);display:none;align-items:center;justify-content:center;z-index:30;padding:20px;}
+  .sheet{background:var(--panel-solid);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:20px;max-width:380px;width:100%;max-height:86vh;overflow-y:auto;}
+  .sheet h3{margin:0 0 8px;font-family:'Oswald';font-size:16px;font-weight:600;}
+  .sheet p{font-size:12px;color:var(--chalk-dim);line-height:1.7;margin:0 0 12px;}
+  .sheet input, .sheet select{width:100%;padding:11px 13px;border-radius:8px;border:1px solid rgba(255,255,255,.18);background:#0A0E14;color:var(--chalk);font-family:'Roboto Mono';font-size:15px;margin-bottom:12px;}
+  .sheet .row{display:flex;gap:8px;}
+  .sheet button{flex:1;padding:12px;border-radius:8px;border:none;font-family:'Oswald';font-size:13px;cursor:pointer;}
+  .btnPrimary{background:var(--lime);color:#0A0E14;font-weight:600;}
+  .btnGhost{background:#1B242D;color:var(--chalk-dim);}
+  .btnDanger{background:#3A1B14;color:#FFAF95;border:1px solid rgba(228,87,46,.4) !important;}
+
+  .judge-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:20px;font-size:11.5px;font-family:'Oswald';margin-bottom:10px;}
+  .judge-strike{background:rgba(215,255,62,.15);color:var(--lime);border:1px solid rgba(215,255,62,.4);}
+  .judge-margin{background:rgba(255,184,77,.15);color:var(--amber);border:1px solid rgba(255,184,77,.4);}
+  .judge-ball{background:rgba(228,87,46,.15);color:#FF9E82;border:1px solid rgba(228,87,46,.4);}
+
+  #historyScreen{position:absolute;inset:0;background:var(--bg);display:none;flex-direction:column;padding:max(16px,env(safe-area-inset-top)) 16px max(16px,env(safe-area-inset-bottom));}
+  #historyScreen .hd{display:flex;align-items:center;gap:10px;margin-bottom:12px;}
+  #historyScreen h2{font-family:'Oswald';font-size:18px;margin:0;flex:1;}
+  #historyList{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;}
+  .hrow{background:var(--panel-solid);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px 12px;display:flex;align-items:center;gap:10px;font-size:12px;}
+  .hrow .hj{width:8px;height:36px;border-radius:4px;flex:none;}
+  .hrow .hj.strike{background:var(--lime);} .hrow .hj.margin{background:var(--amber);} .hrow .hj.ball{background:var(--foul);}
+  .hrow .hmain{flex:1;line-height:1.5;}
+  .hrow .ht{color:var(--chalk-dim);font-family:'Roboto Mono';font-size:10.5px;}
+  .empty-hint{color:var(--chalk-dim);font-size:12.5px;text-align:center;margin-top:40px;line-height:1.8;}
+  #historyFooter{display:flex;gap:8px;margin-top:12px;}
+  #historyFooter .pill{flex:1;justify-content:center;}
+
+  #bleScreen .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;}
+  .charRow{background:#0A0E14;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:9px 11px;font-size:11px;margin-bottom:6px;}
+  .charRow .u{font-family:'Roboto Mono';color:var(--sky);word-break:break-all;}
+  .charRow .v{font-family:'Roboto Mono';color:var(--chalk-dim);margin-top:3px;word-break:break-all;}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- START SCREEN -->
+  <div id="startScreen">
+    <div class="brand"><div class="mark"></div><h1>STRIKE ZONE LIVE</h1><span class="tag">完成版</span></div>
+    <p class="lede">公認野球規則 定義74に基づき、<b>肩の上部とベルト上部の中間点</b>を上限、<b>膝頭の下部</b>を下限としてゾーンを表示します。今回のバージョンでは、姿勢を<b>AIが自動検出</b>し、必要に応じて手動で微調整できます。</p>
+
+    <div class="field-group">
+      <div class="label">撮影する視点</div>
+      <div class="segmented">
+        <div class="seg-btn active" data-mode="catcher">キャッチャー後方<span class="sub">高さ・左右（コース）を判定</span></div>
+        <div class="seg-btn" data-mode="side">横方向<span class="sub">高さを判定</span></div>
+      </div>
+    </div>
+
+    <div class="field-group">
+      <div class="label">使用球種（境界の判定マージンに反映）</div>
+      <div class="ball-row">
+        <div class="ball-btn" data-ball="J">軟式 J号<span class="mm">69mm</span></div>
+        <div class="ball-btn active" data-ball="M">軟式 M号<span class="mm">72mm</span></div>
+        <div class="ball-btn" data-ball="H">硬式球<span class="mm">約74mm</span></div>
+      </div>
+    </div>
+
+    <div class="field-group">
+      <div class="toggle-row">
+        <div class="t">AIによる姿勢自動認識<span class="sub">MediaPipe Pose／初回のみモデル取得(数十秒)</span></div>
+        <div class="switch on" id="autoPoseSwitch"><div class="knob"></div></div>
+      </div>
+    </div>
+
+    <div class="field-group">
+      <div class="label">2台連動モード（実験的・任意）</div>
+      <div class="pill ghost" id="openLinkScreenBtn" style="width:100%;justify-content:center;padding:12px;">
+        <span id="linkSummary">未接続 — タップして連動セットアップ</span>
+      </div>
+    </div>
+
+    <div class="rule-card">
+      <div class="k">自動と手動の分担</div>
+      <p>肩・腰(ベルト近似)・膝は自動検出→ドラッグで微調整可。左右幅／前後長は本塁ベース実寸(43.18cm)基準のため、視点ごとに<b>初回のみ手動で2点タップ</b>して校正します。球の軌道自動追跡は精度が不安定なため「ベータ機能」とし、最後に手動修正できます。</p>
+    </div>
+    <div class="rule-card">
+      <div class="k">2台連動（立体的判断）の仕組み</div>
+      <p>後方視点の端末は「高さ・左右」、横視点の端末は「高さ・前後」をそれぞれ実寸(cm)で計測します。この2つをP2P通信(サーバー不要のWebRTC・招待コード方式)でリアルタイムに突き合わせることで、高さ・左右・前後の3軸判定を行います。ピクセル単位の映像合成(真のステレオ視)ではなく、実寸換算した数値同士の統合である点にご留意ください。初回接続時のみ多少のネット接続が必要です。</p>
+    </div>
+    <div class="rule-card warn">
+      <div class="k">球速計連携について</div>
+      <p>「HOPE」という製品の公開仕様が確認できなかったため、①球速を手入力する欄と、②Bluetooth機器に接続して生データを確認できる実験画面、の2通りを用意しました。機器側のBluetooth仕様(Service/Characteristic UUID)が分かれば本連携に対応できます。</p>
+    </div>
+
+    <button id="startBtn">カメラを起動する</button>
+    <button id="historyBtnStart">投球履歴を見る</button>
+    <div id="camError"></div>
+    <div id="installRow"><div class="pill ghost" id="installBtn" style="width:100%;justify-content:center;padding:13px;">ホーム画面に追加</div></div>
+    <p id="iosInstallHint">共有ボタン ⬆︎ から「ホーム画面に追加」を選ぶと、次回からアプリのように起動できます。</p>
+  </div>
+
+  <!-- LINK SETUP SCREEN -->
+  <div class="overlayScreen" id="linkScreen">
+    <div class="sheet">
+      <h3>2台連動セットアップ</h3>
+      <p>1台を「ホスト」、もう1台を「招待コードを使う」側にしてください。役割はどちらでも構いません（視点はそれぞれのスタート画面での選択で決まります）。</p>
+
+      <div class="segmented" style="margin-bottom:12px;">
+        <div class="seg-btn active" id="linkTabHost">ホストになる</div>
+        <div class="seg-btn" id="linkTabGuest">招待コードを使う</div>
+      </div>
+
+      <div id="linkHostPane">
+        <div class="pill ghost" id="linkCreateOfferBtn" style="width:100%;justify-content:center;margin-bottom:10px;">① 招待コードを作成</div>
+        <textarea id="linkOfferOut" readonly rows="3" style="width:100%;font-family:'Roboto Mono';font-size:11px;background:#0A0E14;color:var(--chalk-dim);border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:8px;margin-bottom:8px;" placeholder="ここに招待コードが表示されます"></textarea>
+        <div class="pill ghost" id="linkCopyOfferBtn" style="width:100%;justify-content:center;margin-bottom:14px;">コードをコピー</div>
+        <p>② 相手の端末で作成された「応答コード」を貼り付けてください</p>
+        <textarea id="linkAnswerIn" rows="3" style="width:100%;font-family:'Roboto Mono';font-size:11px;background:#0A0E14;color:var(--chalk);border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:8px;margin-bottom:10px;" placeholder="応答コードを貼り付け"></textarea>
+        <div class="pill ghost" id="linkConnectHostBtn" style="width:100%;justify-content:center;">接続する</div>
+      </div>
+
+      <div id="linkGuestPane" style="display:none;">
+        <p>① ホスト端末で作成された「招待コード」を貼り付けてください</p>
+        <textarea id="linkOfferIn" rows="3" style="width:100%;font-family:'Roboto Mono';font-size:11px;background:#0A0E14;color:var(--chalk);border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:8px;margin-bottom:10px;" placeholder="招待コードを貼り付け"></textarea>
+        <div class="pill ghost" id="linkCreateAnswerBtn" style="width:100%;justify-content:center;margin-bottom:10px;">② 応答コードを作成</div>
+        <textarea id="linkAnswerOut" readonly rows="3" style="width:100%;font-family:'Roboto Mono';font-size:11px;background:#0A0E14;color:var(--chalk-dim);border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:8px;margin-bottom:8px;" placeholder="ここに応答コードが表示されます"></textarea>
+        <p>③ このコードをホスト側に伝えて「接続する」を押してもらってください</p>
+        <div class="pill ghost" id="linkCopyAnswerBtn" style="width:100%;justify-content:center;">コードをコピー</div>
+      </div>
+
+      <p id="linkStatusText" style="margin-top:14px;color:var(--chalk-dim);">状態: 未接続</p>
+      <div class="row">
+        <button class="btnGhost" id="linkDisconnectBtn">切断</button>
+        <button class="btnPrimary" id="linkCloseBtn">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CAMERA SCREEN -->
+  <div id="cameraScreen">
+    <video id="video" playsinline autoplay muted></video>
+    <canvas id="overlay"></canvas>
+
+    <div id="topBar">
+      <div class="pill on" id="modePill">後方視点</div>
+      <div class="pill ghost" id="ballPill">M号 72mm</div>
+      <div class="pill" id="poseStatusPill"><span class="dot"></span><span id="poseStatusText">起動中</span></div>
+      <div class="pill ghost" id="linkStatusPill"><span class="dot"></span><span id="linkStatusPillText">連動: なし</span></div>
+      <div class="spacer"></div>
+      <div class="pill" id="exitBtn">終了</div>
+    </div>
+
+    <div id="instructionBar">
+      <div class="step" id="stepLabel">STEP 1 / 2</div>
+      <div class="txt" id="stepText">タップして指定してください</div>
+      <div class="cancel" id="stepCancel">キャンセルして戻る</div>
+    </div>
+
+    <div id="infoPanel"></div>
+
+    <div id="controlDock">
+      <div class="pill" id="rescaleBtn">基準距離を再設定</div>
+      <div class="pill" id="manualCalibBtn">姿勢を手動で取り直す</div>
+      <div class="pill" id="resetOffsetBtn">補正をリセット</div>
+      <div class="pill" id="recordBtn">● 投球を記録</div>
+      <div class="pill" id="bleBtn">球速計(実験)</div>
+      <div class="pill" id="historyBtnCam">履歴</div>
+      <div class="pill" id="swapModeBtn">横⇄後方</div>
+    </div>
+  </div>
+
+  <!-- SCALE INPUT MODAL -->
+  <div class="overlayScreen" id="scaleModal">
+    <div class="sheet">
+      <h3>基準距離を入力</h3>
+      <p id="scaleHint">タップした2点間の実際の距離をcmで入力してください。</p>
+      <input id="scaleInput" type="number" inputmode="decimal" step="0.1" placeholder="例: 43.18">
+      <div class="row"><button class="btnGhost" id="scaleCancel">キャンセル</button><button class="btnPrimary" id="scaleConfirm">決定</button></div>
+    </div>
+  </div>
+
+  <!-- PITCH SAVE MODAL -->
+  <div class="overlayScreen" id="pitchModal">
+    <div class="sheet">
+      <h3>この投球を記録しますか？</h3>
+      <div id="judgeBadge" class="judge-badge judge-strike">判定: ストライク</div>
+      <p id="axisBreakdown" style="font-size:11.5px;color:var(--chalk-dim);line-height:1.7;"></p>
+      <p>自動検出したコースがずれている場合は、映像上の実際の通過点をタップして修正できます。</p>
+      <div class="pill ghost" id="retapPointBtn" style="width:100%;justify-content:center;margin-bottom:12px;">通過点をタップし直す</div>
+      <input id="speedInput" type="number" inputmode="decimal" step="0.1" placeholder="球速 km/h（任意・手入力）">
+      <div class="row"><button class="btnGhost" id="pitchDiscard">破棄</button><button class="btnPrimary" id="pitchSave">履歴に保存</button></div>
+    </div>
+  </div>
+
+  <!-- BLE EXPERIMENTAL SCREEN -->
+  <div class="overlayScreen" id="bleScreen">
+    <div class="sheet">
+      <h3>球速計 接続（実験的）</h3>
+      <p>Web Bluetoothで機器に接続し、通知される生データを表示します。「HOPE」の仕様が未確認のため、値の意味づけは表示された数値を見ながらご自身で確認してください。</p>
+      <div class="row" style="margin-bottom:12px;">
+        <button class="btnPrimary" id="bleConnectBtn">機器に接続</button>
+        <button class="btnGhost" id="bleCloseBtn">閉じる</button>
+      </div>
+      <div id="bleLog"></div>
+    </div>
+  </div>
+
+  <!-- HISTORY SCREEN -->
+  <div id="historyScreen">
+    <div class="hd">
+      <div class="pill" id="historyBackBtn">戻る</div>
+      <h2>投球履歴</h2>
+    </div>
+    <div id="historyList"></div>
+    <div id="historyFooter">
+      <div class="pill" id="csvExportBtn">CSV書き出し</div>
+      <div class="pill btnDanger" id="historyClearBtn" style="color:#FF9E82;border:1px solid rgba(228,87,46,.4);">全削除</div>
+    </div>
+  </div>
+
+</div>
+
+<script type="module">
+import { PoseLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+
+"use strict";
+var $ = function(id){ return document.getElementById(id); };
+
+/* ===================== constants ===================== */
+var BALLS = { J:{label:"軟式 J号", mm:69}, M:{label:"軟式 M号", mm:72}, H:{label:"硬式球", mm:74} };
+var PLATE_WIDTH_CM = 43.18;
+var LM = { LS:11, RS:12, LH:23, RH:24, LK:25, RK:26, LA:27, RA:28 };
+var MODEL_URL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";
+var WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm";
+
+/* ===================== state ===================== */
+var mode = "catcher";
+var ballKey = "M";
+var autoPoseWanted = true;
+var autoPoseReady = false;
+var poseLandmarker = null;
+var stream = null;
+var lastPoseTs = 0;
+var poseLostSince = 0;
+var lastAutoPoint = null; // {topY,botY,cx}
+
+function blankCalib(){ return { scaleA:null, scaleB:null, realCm:null, shoulder:null, belt:null, knee:null,
+  offsetTop:0, offsetBot:0, offsetLeft:0, offsetRight:0 }; }
+var calib = { catcher: blankCalib(), side: blankCalib() };
+
+var calibrating = false, calibSteps = [], calibIndex = 0;
+var draggingHandle = null;
+
+/* recording */
+var recording = false, recordTrail = [], recordTimer = null;
+var pendingPitch = null; // {point, judge}
+var manualPointTap = false;
+
+/* ===================== dom refs ===================== */
+var startScreen=$("startScreen"), cameraScreen=$("cameraScreen"), historyScreen=$("historyScreen");
+var video=$("video"), canvas=$("overlay"), ctx=canvas.getContext("2d");
+var modePill=$("modePill"), ballPill=$("ballPill"), poseStatusPill=$("poseStatusPill"), poseStatusText=$("poseStatusText");
+var instructionBar=$("instructionBar"), stepLabel=$("stepLabel"), stepText=$("stepText");
+var infoPanel=$("infoPanel");
+var scaleModal=$("scaleModal"), scaleInput=$("scaleInput"), scaleHint=$("scaleHint");
+var pitchModal=$("pitchModal"), judgeBadge=$("judgeBadge"), speedInput=$("speedInput");
+var bleScreen=$("bleScreen"), bleLog=$("bleLog");
+
+/* ===================== start screen UI ===================== */
+document.querySelectorAll(".seg-btn").forEach(function(btn){
+  btn.addEventListener("click", function(){
+    document.querySelectorAll(".seg-btn").forEach(function(b){ b.classList.remove("active"); });
+    btn.classList.add("active"); mode = btn.dataset.mode;
+  });
+});
+document.querySelectorAll(".ball-btn").forEach(function(btn){
+  btn.addEventListener("click", function(){
+    document.querySelectorAll(".ball-btn").forEach(function(b){ b.classList.remove("active"); });
+    btn.classList.add("active"); ballKey = btn.dataset.ball;
+  });
+});
+$("autoPoseSwitch").addEventListener("click", function(){
+  autoPoseWanted = !autoPoseWanted;
+  this.classList.toggle("on", autoPoseWanted);
+});
+
+$("startBtn").addEventListener("click", startCamera);
+$("historyBtnStart").addEventListener("click", function(){ openHistory(); });
+$("historyBtnCam").addEventListener("click", function(){ openHistory(); });
+$("historyBackBtn").addEventListener("click", function(){ historyScreen.style.display = "none"; });
+
+function startCamera(){
+  var err = $("camError"); err.style.display = "none";
+  var constraintsList = [ { video:{ facingMode:{ ideal:"environment" } }, audio:false }, { video:true, audio:false } ];
+  tryNext(0);
+  function tryNext(i){
+    if(i >= constraintsList.length){
+      err.textContent = "カメラにアクセスできませんでした。ブラウザのカメラ権限を確認するか、Safari/Chromeで直接このページを開いて再度お試しください。";
+      err.style.display = "block"; return;
+    }
+    navigator.mediaDevices.getUserMedia(constraintsList[i]).then(function(s){
+      stream = s; video.srcObject = s;
+      video.onloadedmetadata = function(){ video.play(); launchCameraScreen(); };
+    }).catch(function(){ tryNext(i+1); });
+  }
+}
+
+function launchCameraScreen(){
+  startScreen.style.display = "none";
+  cameraScreen.style.display = "block";
+  resizeCanvas();
+  loadPersistedCalib();
+  updateTopBar();
+  if(autoPoseWanted){ initPose(); } else { setPoseStatus("手動モード", false); }
+  if(!hasScale(mode)){ beginCalibration(true); }
+  else { showZoneUI(); }
+  requestAnimationFrame(draw);
+}
+
+window.addEventListener("resize", resizeCanvas);
+function resizeCanvas(){ var r = cameraScreen.getBoundingClientRect(); canvas.width = r.width; canvas.height = r.height; }
+
+/* ===================== persistence: scale calib (localStorage) ===================== */
+function loadPersistedCalib(){
+  try{
+    var c = localStorage.getItem("sz_calib_catcher"); if(c) calib.catcher = Object.assign(blankCalib(), JSON.parse(c));
+    var s = localStorage.getItem("sz_calib_side"); if(s) calib.side = Object.assign(blankCalib(), JSON.parse(s));
+  }catch(e){}
+}
+function persistCalib(m){ try{ localStorage.setItem("sz_calib_"+m, JSON.stringify(calib[m])); }catch(e){} }
+
+/* ===================== MediaPipe Pose ===================== */
+async function initPose(){
+  setPoseStatus("モデル読込中…", false);
+  try{
+    var vision = await FilesetResolver.forVisionTasks(WASM_URL);
+    poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+      baseOptions:{ modelAssetPath: MODEL_URL, delegate:"GPU" },
+      runningMode:"VIDEO", numPoses:1
+    });
+    autoPoseReady = true;
+    setPoseStatus("認識中", true);
+  }catch(e){
+    autoPoseReady = false;
+    setPoseStatus("自動認識 利用不可（手動)", false);
+    if(!hasBodyPoints(mode) && hasScale(mode)) beginCalibration(false, true);
+  }
+}
+function setPoseStatus(text, ok){
+  poseStatusText.textContent = text;
+  poseStatusPill.classList.toggle("on", !!ok);
+  poseStatusPill.classList.toggle("warn", !ok);
+}
+
+/* map normalized video coords -> displayed canvas coords (object-fit:cover) */
+function videoToCanvas(nx, ny){
+  var vw = video.videoWidth || 1, vh = video.videoHeight || 1;
+  var cw = canvas.width, ch = canvas.height;
+  var scale = Math.max(cw/vw, ch/vh);
+  var dw = vw*scale, dh = vh*scale;
+  var ox = (cw - dw)/2, oy = (ch - dh)/2;
+  return { x: nx*vw*scale + ox, y: ny*vh*scale + oy };
+}
+
+var lastLandmarks = null;
+function runPoseFrame(){
+  if(poseLandmarker && video.readyState >= 2){
+    var ts = performance.now();
+    if(ts - lastPoseTs > 33){ // ~30fps cap
+      lastPoseTs = ts;
+      try{
+        var res = poseLandmarker.detectForVideo(video, ts);
+        if(res && res.landmarks && res.landmarks.length){
+          lastLandmarks = res.landmarks[0];
+          poseLostSince = 0;
+          setPoseStatus("認識中", true);
+        } else {
+          if(!poseLostSince) poseLostSince = ts;
+          if(ts - poseLostSince > 1500){ lastLandmarks = null; setPoseStatus("人物ロスト", false); }
+        }
+      }catch(e){}
+    }
+  }
+}
+
+function autoBodyPoints(){
+  if(!lastLandmarks) return null;
+  var L = lastLandmarks;
+  function mid(a,b){ return videoToCanvas((L[a].x+L[b].x)/2, (L[a].y+L[b].y)/2); }
+  var sh = mid(LM.LS, LM.RS);
+  var hip = mid(LM.LH, LM.RH);
+  var knee = mid(LM.LK, LM.RK);
+  var ank = mid(LM.LA, LM.RA);
+  var kneeBottom = { x: knee.x + (ank.x-knee.x)*0.22, y: knee.y + (ank.y-knee.y)*0.22 };
+  var cx = (sh.x+hip.x)/2;
+  return { topY:(sh.y+hip.y)/2, botY:kneeBottom.y, cx:cx };
+}
+function hasBodyPoints(m){ var c = calib[m]; return !!(c.shoulder && c.belt && c.knee); }
+function hasScale(m){ var c = calib[m]; return !!(c.scaleA && c.scaleB && c.realCm); }
+
+/* ===================== top bar ===================== */
+modePill.addEventListener("click", toggleMode);
+$("swapModeBtn").addEventListener("click", toggleMode);
+function toggleMode(){
+  mode = (mode === "catcher") ? "side" : "catcher";
+  updateTopBar();
+  if(!hasScale(mode)) beginCalibration(true); else showZoneUI();
+}
+$("manualCalibBtn").addEventListener("click", function(){ beginCalibration(false, true); });
+$("rescaleBtn").addEventListener("click", function(){ beginCalibration(true, false, true); });
+$("resetOffsetBtn").addEventListener("click", function(){
+  var c = calib[mode]; c.offsetTop=0; c.offsetBot=0; c.offsetLeft=0; c.offsetRight=0; persistCalib(mode);
+});
+$("exitBtn").addEventListener("click", function(){
+  if(stream){ stream.getTracks().forEach(function(t){ t.stop(); }); }
+  if(poseLandmarker){ try{ poseLandmarker.close(); }catch(e){} poseLandmarker=null; autoPoseReady=false; }
+  cameraScreen.style.display = "none"; startScreen.style.display = "flex";
+  instructionBar.style.display = "none"; infoPanel.style.display = "none";
+});
+function updateTopBar(){
+  modePill.textContent = (mode === "catcher") ? "後方視点" : "横視点";
+  ballPill.textContent = BALLS[ballKey].label + " " + BALLS[ballKey].mm + "mm";
+}
+
+/* ===================== calibration flow (scale always manual; body optional) ===================== */
+function stepsFor(m, includeBody, scaleOnly){
+  var aLabel = (m==="catcher") ? "本塁ベースの左端をタップ" : "本塁ベースの前端（投手側の角）をタップ";
+  var bLabel = (m==="catcher") ? "本塁ベースの右端をタップ" : "本塁ベースの後端の頂点をタップ";
+  var s = [{key:"scaleA", text:aLabel},{key:"scaleB", text:bLabel}];
+  if(scaleOnly) return s;
+  if(includeBody){
+    s = s.concat([
+      {key:"shoulder", text:"打者の肩の上部をタップ"},
+      {key:"belt", text:"打者のズボン（ベルト）の上部をタップ"},
+      {key:"knee", text:"打者の膝頭の下部をタップ"}
+    ]);
+  }
+  return s;
+}
+function beginCalibration(needScale, forceBodyOnly, scaleOnly){
+  infoPanel.style.display = "none";
+  var c = calib[mode];
+  var useAuto = autoPoseReady && autoPoseWanted;
+  if(forceBodyOnly){
+    calibSteps = stepsFor(mode, true, false).filter(function(s){ return s.key!=="scaleA" && s.key!=="scaleB"; });
+    c.shoulder=c.belt=c.knee=null;
+  } else if(scaleOnly){
+    calibSteps = stepsFor(mode, false, true);
+    c.scaleA=c.scaleB=c.realCm=null;
+  } else if(needScale && !hasScale(mode)){
+    calibSteps = stepsFor(mode, !useAuto, false);
+    calib[mode] = blankCalib();
+  } else {
+    calibSteps = stepsFor(mode, true, false).filter(function(s){ return s.key==="shoulder"||s.key==="belt"||s.key==="knee"; });
+  }
+  calibIndex = 0; calibrating = true;
+  instructionBar.style.display = "block"; updateStepUI();
+}
+function updateStepUI(){
+  stepLabel.textContent = "STEP " + (calibIndex+1) + " / " + calibSteps.length;
+  stepText.textContent = calibSteps[calibIndex].text;
+}
+$("stepCancel").addEventListener("click", function(){
+  calibrating = false; instructionBar.style.display = "none";
+  if(hasScale(mode)) showZoneUI();
+});
+
+canvas.addEventListener("pointerdown", function(ev){
+  var r = canvas.getBoundingClientRect();
+  var pt = { x: ev.clientX - r.left, y: ev.clientY - r.top };
+
+  if(manualPointTap){ finalizePitchPoint(pt); return; }
+
+  var handle = hitTestHandle(pt);
+  if(handle){ draggingHandle = handle; return; }
+
+  if(!calibrating) return;
+  var key = calibSteps[calibIndex].key;
+  calib[mode][key] = pt;
+  if(key === "scaleB"){ openScaleModal(); return; }
+  advanceStep();
+});
+canvas.addEventListener("pointermove", function(ev){
+  if(!draggingHandle) return;
+  var r = canvas.getBoundingClientRect();
+  var y = ev.clientY - r.top, x = ev.clientX - r.left;
+  var c = calib[mode];
+  if(draggingHandle==="top") c.offsetTop = y - baseTopY();
+  if(draggingHandle==="bot") c.offsetBot = y - baseBotY();
+  if(draggingHandle==="left") c.offsetLeft = x - baseLeftX();
+  if(draggingHandle==="right") c.offsetRight = x - baseRightX();
+});
+window.addEventListener("pointerup", function(){ if(draggingHandle){ persistCalib(mode); } draggingHandle=null; });
+
+function advanceStep(){
+  calibIndex++;
+  if(calibIndex >= calibSteps.length){
+    calibrating = false; instructionBar.style.display = "none";
+    persistCalib(mode);
+    if(hasScale(mode)) showZoneUI();
+  } else { updateStepUI(); }
+}
+function openScaleModal(){
+  scaleHint.textContent = (mode==="catcher") ? "本塁ベース前端の幅（既定 "+PLATE_WIDTH_CM+"cm）でよければそのまま決定してください。" : "本塁ベースの前端から後端の頂点までの長さ（既定 "+PLATE_WIDTH_CM+"cm、前後判定の基準になります）でよければそのまま決定してください。";
+  scaleInput.value = PLATE_WIDTH_CM;
+  scaleModal.style.display = "flex"; scaleInput.focus();
+}
+$("scaleCancel").addEventListener("click", function(){
+  scaleModal.style.display = "none";
+  calib[mode].scaleA=null; calib[mode].scaleB=null; calibIndex=0; updateStepUI();
+});
+$("scaleConfirm").addEventListener("click", function(){
+  var v = parseFloat(scaleInput.value); if(!v || v<=0){ scaleInput.focus(); return; }
+  calib[mode].realCm = v; scaleModal.style.display = "none"; advanceStep();
+});
+function showZoneUI(){ infoPanel.style.display = "block"; }
+
+/* ===================== geometry helpers (current baseline zone, before offset) ===================== */
+function currentBody(){
+  var c = calib[mode];
+  if(autoPoseReady && autoPoseWanted && lastLandmarks){
+    var a = autoBodyPoints();
+    if(a) return a;
+  }
+  if(c.shoulder && c.belt && c.knee){
+    return { topY:(c.shoulder.y+c.belt.y)/2, botY:c.knee.y, cx:(c.shoulder.x+c.belt.x)/2 };
+  }
+  return null;
+}
+function baseTopY(){ var b = currentBody(); return b ? b.topY : canvas.height*0.3; }
+function baseBotY(){ var b = currentBody(); return b ? b.botY : canvas.height*0.6; }
+function baseLeftX(){ var c = calib[mode]; return c.scaleA && c.scaleB ? Math.min(c.scaleA.x,c.scaleB.x) : canvas.width*0.35; }
+function baseRightX(){ var c = calib[mode]; return c.scaleA && c.scaleB ? Math.max(c.scaleA.x,c.scaleB.x) : canvas.width*0.65; }
+
+function hitTestHandle(pt){
+  if(!hasScale(mode)) return null;
+  var c = calib[mode];
+  var topY = baseTopY()+c.offsetTop, botY = baseBotY()+c.offsetBot;
+  var cx = (mode==="catcher") ? (baseLeftX()+baseRightX())/2 : canvas.width*0.5;
+  var cands = { top:{x:cx,y:topY}, bot:{x:cx,y:botY} };
+  if(mode==="catcher"){
+    var midY = (topY+botY)/2;
+    cands.left = { x:baseLeftX()+c.offsetLeft, y:midY };
+    cands.right = { x:baseRightX()+c.offsetRight, y:midY };
+  }
+  var best=null, bestD=26;
+  Object.keys(cands).forEach(function(k){
+    var d = Math.hypot(pt.x-cands[k].x, pt.y-cands[k].y);
+    if(d<bestD){ bestD=d; best=k; }
+  });
+  return best;
+}
+
+/* ===================== main draw loop ===================== */
+function dist(a,b){ return Math.hypot(a.x-b.x,a.y-b.y); }
+var cssCache = {};
+function css(v){ if(!cssCache[v]) cssCache[v]=getComputedStyle(document.documentElement).getPropertyValue(v).trim(); return cssCache[v]; }
+
+function draw(){
+  runPoseFrame();
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  var c = calib[mode];
+
+  // calibration reference markers
+  drawMarker(c.scaleA, "A", css("--sky")); drawMarker(c.scaleB, "B", css("--sky"));
+  if(c.scaleA && c.scaleB){ dashLine(c.scaleA, c.scaleB, "rgba(127,216,255,0.7)", 1.5, [4,5]); }
+
+  // live skeleton (auto mode) for visual confirmation
+  if(autoPoseReady && autoPoseWanted && lastLandmarks){
+    drawSkeletonPoint(LM.LS); drawSkeletonPoint(LM.RS);
+    drawSkeletonPoint(LM.LH); drawSkeletonPoint(LM.RH);
+    drawSkeletonPoint(LM.LK); drawSkeletonPoint(LM.RK);
+  } else {
+    drawMarker(c.shoulder, "肩", css("--amber")); drawMarker(c.belt, "ベルト", css("--amber")); drawMarker(c.knee, "膝", css("--amber"));
+  }
+
+  if(hasScale(mode) && (hasBodyPoints(mode) || (autoPoseReady && autoPoseWanted && lastLandmarks))){
+    var pxPerCm = dist(c.scaleA, c.scaleB) / c.realCm;
+    var diamCm = BALLS[ballKey].mm/10;
+    var rPx = (diamCm/2)*pxPerCm;
+
+    var topY = baseTopY() + c.offsetTop;
+    var botY = baseBotY() + c.offsetBot;
+
+    if(mode==="catcher"){
+      var leftX = baseLeftX() + c.offsetLeft, rightX = baseRightX() + c.offsetRight;
+      strokeRect(leftX, topY, rightX, botY, css("--lime"), false);
+      strokeRect(leftX-rPx, topY-rPx, rightX+rPx, botY+rPx, css("--amber"), true);
+      drawHandle((leftX+rightX)/2, topY); drawHandle((leftX+rightX)/2, botY);
+      drawHandle(leftX, (topY+botY)/2); drawHandle(rightX, (topY+botY)/2);
+    } else {
+      strokeHLine(topY, css("--lime"), false); strokeHLine(botY, css("--lime"), false);
+      strokeHLine(topY-rPx, css("--amber"), true); strokeHLine(botY+rPx, css("--amber"), true);
+      drawHandle(canvas.width*0.5, topY); drawHandle(canvas.width*0.5, botY);
+    }
+    updateInfoPanel(pxPerCm, rPx, topY, botY);
+    lastAutoPoint = { topY:topY, botY:botY, leftX: mode==="catcher"?baseLeftX()+c.offsetLeft:null, rightX: mode==="catcher"?baseRightX()+c.offsetRight:null, rPx:rPx };
+  }
+
+  // recording trail
+  if(recording && recordTrail.length){
+    ctx.save(); ctx.strokeStyle = "rgba(255,80,80,.85)"; ctx.lineWidth=3; ctx.beginPath();
+    recordTrail.forEach(function(p,i){ if(i===0) ctx.moveTo(p.x,p.y); else ctx.lineTo(p.x,p.y); });
+    ctx.stroke(); ctx.restore();
+  }
+
+  requestAnimationFrame(draw);
+}
+function drawSkeletonPoint(idx){
+  if(!lastLandmarks || !lastLandmarks[idx]) return;
+  var p = videoToCanvas(lastLandmarks[idx].x, lastLandmarks[idx].y);
+  ctx.save(); ctx.fillStyle = css("--sky"); ctx.beginPath(); ctx.arc(p.x,p.y,4,0,Math.PI*2); ctx.fill(); ctx.restore();
+}
+function drawHandle(x,y){
+  ctx.save(); ctx.fillStyle="rgba(255,184,77,.9)"; ctx.beginPath(); ctx.arc(x,y,6,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle="#0A0E14"; ctx.lineWidth=2; ctx.stroke(); ctx.restore();
+}
+function dashLine(a,b,color,w,dash){ ctx.save(); ctx.strokeStyle=color; ctx.lineWidth=w; ctx.setLineDash(dash); ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke(); ctx.restore(); }
+function strokeRect(x1,y1,x2,y2,color,dashed){ ctx.save(); ctx.strokeStyle=color; ctx.lineWidth=dashed?2:2.6; if(dashed) ctx.setLineDash([9,7]); else ctx.setLineDash([]); ctx.strokeRect(x1,y1,x2-x1,y2-y1); ctx.restore(); }
+function strokeHLine(y,color,dashed){ ctx.save(); ctx.strokeStyle=color; ctx.lineWidth=dashed?2:2.6; if(dashed) ctx.setLineDash([9,7]); else ctx.setLineDash([]); ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(canvas.width,y); ctx.stroke(); ctx.restore(); }
+function drawMarker(p,label,color){ if(!p) return; ctx.save(); ctx.fillStyle=color; ctx.beginPath(); ctx.arc(p.x,p.y,5,0,Math.PI*2); ctx.fill(); ctx.font="11px 'Roboto Mono',monospace"; ctx.fillStyle="#fff"; ctx.fillText(label,p.x+8,p.y-8); ctx.restore(); }
+
+function updateInfoPanel(pxPerCm, rPx, topY, botY){
+  var zoneHeightCm = (botY-topY)/pxPerCm;
+  var marginMm = (rPx/pxPerCm)*10;
+  var src = (autoPoseReady && autoPoseWanted && lastLandmarks) ? "自動認識(補正あり)" : "手動タップ";
+  infoPanel.innerHTML =
+    '姿勢ソース: <b>'+src+'</b><br>'+
+    'ボール: <b>'+BALLS[ballKey].label+'</b> ('+BALLS[ballKey].mm+'mm) ／ マージン ±<b>'+marginMm.toFixed(1)+'mm</b><br>'+
+    'ゾーン高さ: <b>'+zoneHeightCm.toFixed(1)+'cm</b>'+
+    (mode==="side" ? '　※前後(奥行き)は後方視点と併用' : '');
+}
+
+/* ===================== pitch recording (beta trajectory) ===================== */
+var offCanvas = document.createElement("canvas"); var offCtx = offCanvas.getContext("2d", {willReadFrequently:true});
+var prevFrameData = null;
+
+$("recordBtn").addEventListener("click", function(){
+  if(recording) return;
+  if(!lastAutoPoint){ return; }
+  var btn = this;
+  btn.classList.add("rec"); btn.textContent = "● 記録中…(自動停止)";
+
+  var linked = linkDC && linkDC.readyState === "open";
+  var captureId = linked ? (Date.now()+"_"+Math.random().toString(36).slice(2,7)) : null;
+
+  if(linked){
+    pendingJoint = { captureId:captureId, local:null, remote:null, point:null };
+    linkDC.send(JSON.stringify({ type:"capture_start", captureId:captureId }));
+  }
+
+  recording = true; recordTrail = []; prevFrameData = null;
+  var start = performance.now();
+  function tick(){
+    if(!recording) return;
+    captureMotionPoint();
+    if(performance.now() - start > 1200){ stopRecording(); return; }
+    requestAnimationFrame(tick);
+  }
+  tick();
+  clearTimeout(recordTimer);
+  recordTimer = setTimeout(stopRecording, 1400);
+  function stopRecording(){
+    if(!recording) return;
+    recording = false; btn.classList.remove("rec"); btn.textContent = "● 投球を記録";
+    if(linked){ finishLocalCapture(captureId); }
+    else { openPitchModal(); }
+  }
+});
+
+var W=160,H=90;
+function captureMotionPoint(){
+  if(video.readyState < 2) return;
+  offCanvas.width = W; offCanvas.height = H;
+  offCtx.drawImage(video, 0, 0, W, H);
+  var frame = offCtx.getImageData(0,0,W,H);
+  if(prevFrameData){
+    var maxDiff=0, mx=0, my=0;
+    for(var y=0;y<H;y+=2){
+      for(var x=0;x<W;x+=2){
+        var i=(y*W+x)*4;
+        var d = Math.abs(frame.data[i]-prevFrameData.data[i]) + Math.abs(frame.data[i+1]-prevFrameData.data[i+1]) + Math.abs(frame.data[i+2]-prevFrameData.data[i+2]);
+        if(d>maxDiff){ maxDiff=d; mx=x; my=y; }
+      }
+    }
+    if(maxDiff > 60){
+      var full = videoToCanvasFromOffscreen(mx, my);
+      recordTrail.push(full);
+    }
+  }
+  prevFrameData = frame;
+}
+function videoToCanvasFromOffscreen(ox, oy){ return videoToCanvas(ox/W, oy/H); }
+
+var axisBreakdownEl = $("axisBreakdown");
+
+function openPitchModal(){
+  var pt = recordTrail.length ? recordTrail[recordTrail.length-1] : { x: canvas.width/2, y: (lastAutoPoint.topY+lastAutoPoint.botY)/2 };
+  pendingPitch = { point: pt, merged: null };
+  updateJudgeBadge(pt);
+  speedInput.value = "";
+  pitchModal.style.display = "flex";
+}
+function openPitchModalWithMerge(pt, merged){
+  pendingPitch = { point: pt, merged: merged, judge: merged.judge };
+  renderMergedBadge(merged);
+  speedInput.value = "";
+  pitchModal.style.display = "flex";
+}
+function judgeFor(pt){
+  var z = lastAutoPoint; if(!z) return "ball";
+  var withinV_strict = pt.y >= z.topY && pt.y <= z.botY;
+  var withinV_margin = pt.y >= z.topY - z.rPx && pt.y <= z.botY + z.rPx;
+  if(mode==="catcher"){
+    var withinH_strict = pt.x >= z.leftX && pt.x <= z.rightX;
+    var withinH_margin = pt.x >= z.leftX - z.rPx && pt.x <= z.rightX + z.rPx;
+    if(withinV_strict && withinH_strict) return "strike";
+    if(withinV_margin && withinH_margin) return "margin";
+    return "ball";
+  } else {
+    if(withinV_strict) return "strike";
+    if(withinV_margin) return "margin";
+    return "ball";
+  }
+}
+function badgeClassFor(j){ return j==="strike"?"judge-strike":j==="margin"?"judge-margin":"judge-ball"; }
+function badgeTextFor(j){ return j==="strike"?"ストライク":j==="margin"?"際どい(境界)":"ボール"; }
+
+function updateJudgeBadge(pt){
+  var j = judgeFor(pt);
+  pendingPitch.judge = j; pendingPitch.merged = null;
+  judgeBadge.className = "judge-badge " + badgeClassFor(j);
+  judgeBadge.textContent = "判定: " + badgeTextFor(j);
+  axisBreakdownEl.textContent = (mode==="catcher") ? "この端末単独の判定（高さ・左右）です。前後は未測定です。" : "この端末単独の判定（高さ）です。左右は未測定です。";
+}
+function renderMergedBadge(merged){
+  judgeBadge.className = "judge-badge " + badgeClassFor(merged.judge);
+  judgeBadge.textContent = "判定: " + badgeTextFor(merged.judge) + "（連動判定）";
+  var parts = [];
+  parts.push("高さ: 上端から" + merged.heightCm.toFixed(1) + "cm（ゾーン高さ" + merged.zoneHeightCm.toFixed(1) + "cm）");
+  parts.push(merged.horizCm===null ? "左右: 未測定" : "左右: 中心から" + merged.horizCm.toFixed(1) + "cm");
+  parts.push(merged.depthCm===null ? "前後: 未測定" : "前後: 中心から" + merged.depthCm.toFixed(1) + "cm");
+  if(merged.missing.length) parts.push("（" + merged.missing.join("・") + "は相手端末のデータが届きませんでした）");
+  axisBreakdownEl.textContent = parts.join(" ／ ");
+}
+$("retapPointBtn").addEventListener("click", function(){
+  pitchModal.style.display = "none"; manualPointTap = true;
+});
+function finalizePitchPoint(pt){
+  manualPointTap = false; pendingPitch.point = pt;
+  updateJudgeBadge(pt); // manual retap always falls back to this device's own single-view judgment
+  pitchModal.style.display = "flex";
+}
+$("pitchDiscard").addEventListener("click", function(){ pitchModal.style.display="none"; pendingPitch=null; });
+$("pitchSave").addEventListener("click", function(){
+  if(!pendingPitch) return;
+  var speed = parseFloat(speedInput.value);
+  var rec = {
+    ts: Date.now(), mode: mode, ball: ballKey, judge: pendingPitch.judge,
+    speed: isFinite(speed) ? speed : null, linked: !!pendingPitch.merged
+  };
+  if(pendingPitch.merged){
+    rec.heightCm = Math.round(pendingPitch.merged.heightCm*10)/10;
+    rec.horizCm = pendingPitch.merged.horizCm===null ? null : Math.round(pendingPitch.merged.horizCm*10)/10;
+    rec.depthCm = pendingPitch.merged.depthCm===null ? null : Math.round(pendingPitch.merged.depthCm*10)/10;
+  }
+  savePitch(rec);
+  pitchModal.style.display = "none"; pendingPitch = null;
+});
+
+/* ===================== IndexedDB history ===================== */
+var dbPromise = null;
+function getDB(){
+  if(dbPromise) return dbPromise;
+  dbPromise = new Promise(function(resolve, reject){
+    var req = indexedDB.open("strikezone_db", 1);
+    req.onupgradeneeded = function(){
+      var db = req.result;
+      if(!db.objectStoreNames.contains("pitches")){
+        var store = db.createObjectStore("pitches", { keyPath:"id", autoIncrement:true });
+        store.createIndex("ts", "ts");
+      }
+    };
+    req.onsuccess = function(){ resolve(req.result); };
+    req.onerror = function(){ reject(req.error); };
+  });
+  return dbPromise;
+}
+function savePitch(rec){
+  getDB().then(function(db){
+    var tx = db.transaction("pitches","readwrite");
+    tx.objectStore("pitches").add(rec);
+  }).catch(function(){});
+}
+function loadPitches(cb){
+  getDB().then(function(db){
+    var tx = db.transaction("pitches","readonly");
+    var req = tx.objectStore("pitches").index("ts").getAll();
+    req.onsuccess = function(){ cb(req.result.slice().reverse()); };
+    req.onerror = function(){ cb([]); };
+  }).catch(function(){ cb([]); });
+}
+function clearPitches(cb){
+  getDB().then(function(db){
+    var tx = db.transaction("pitches","readwrite");
+    tx.objectStore("pitches").clear();
+    tx.oncomplete = function(){ cb && cb(); };
+  }).catch(function(){ cb && cb(); });
+}
+
+function openHistory(){
+  historyScreen.style.display = "flex";
+  loadPitches(renderHistory);
+}
+function renderHistory(list){
+  var el = $("historyList");
+  if(!list.length){ el.innerHTML = '<div class="empty-hint">まだ記録がありません。<br>カメラ画面の「投球を記録」から保存できます。</div>'; return; }
+  el.innerHTML = list.map(function(r){
+    var d = new Date(r.ts);
+    var t = d.getHours()+":"+String(d.getMinutes()).padStart(2,"0")+":"+String(d.getSeconds()).padStart(2,"0");
+    var jClass = r.judge==="strike"?"strike":r.judge==="margin"?"margin":"ball";
+    var jText = r.judge==="strike"?"ストライク":r.judge==="margin"?"際どい":"ボール";
+    var modeText = r.mode==="catcher"?"後方":"横";
+    var ballText = BALLS[r.ball] ? BALLS[r.ball].label : r.ball;
+    return '<div class="hrow"><div class="hj '+jClass+'"></div><div class="hmain"><div>'+jText+'　'+ballText+(r.speed? '　'+r.speed+'km/h':'')+'</div><div class="ht">'+t+' ／ '+modeText+'視点</div></div></div>';
+  }).join("");
+}
+$("csvExportBtn").addEventListener("click", function(){
+  loadPitches(function(list){
+    var rows = [["id","datetime","mode","ball","judge","speed_kmh"]];
+    list.forEach(function(r){
+      rows.push([r.id, new Date(r.ts).toISOString(), r.mode, r.ball, r.judge, r.speed==null?"":r.speed]);
+    });
+    var csv = rows.map(function(row){ return row.map(function(v){ return '"'+String(v).replace(/"/g,'""')+'"'; }).join(","); }).join("\n");
+    var blob = new Blob(["\uFEFF"+csv], {type:"text/csv;charset=utf-8;"});
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = "strikezone_pitches.csv";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  });
+});
+$("historyClearBtn").addEventListener("click", function(){
+  if(!confirm("すべての投球履歴を削除します。よろしいですか？")) return;
+  clearPitches(function(){ renderHistory([]); });
+});
+
+/* ===================== two-device link (WebRTC, manual pairing) ===================== */
+var linkPC = null, linkDC = null, linkStatus = "idle"; // idle | connecting | connected | error
+var linkPeerMode = null; // 'catcher' | 'side' reported by the other device
+var pendingJoint = null; // { captureId, local:null, remote:null, timer }
+
+var linkScreen=$("linkScreen"), linkStatusText=$("linkStatusText");
+var linkStatusPillText=$("linkStatusPillText");
+
+$("openLinkScreenBtn").addEventListener("click", function(){ linkScreen.style.display="flex"; });
+$("linkCloseBtn").addEventListener("click", function(){ linkScreen.style.display="none"; });
+$("linkTabHost").addEventListener("click", function(){
+  $("linkTabHost").classList.add("active"); $("linkTabGuest").classList.remove("active");
+  $("linkHostPane").style.display="block"; $("linkGuestPane").style.display="none";
+});
+$("linkTabGuest").addEventListener("click", function(){
+  $("linkTabGuest").classList.add("active"); $("linkTabHost").classList.remove("active");
+  $("linkGuestPane").style.display="block"; $("linkHostPane").style.display="none";
+});
+
+function setLinkStatus(s, extra){
+  linkStatus = s;
+  var label = s==="idle" ? "未接続" : s==="connecting" ? "接続中…" : s==="connected" ? "接続済み" + (linkPeerMode ? "（相手: "+(linkPeerMode==="catcher"?"後方":"横")+"視点）":"") : "エラー";
+  linkStatusText.textContent = "状態: " + label + (extra ? " — " + extra : "");
+  linkStatusPillText.textContent = "連動: " + (s==="connected" ? "接続中" : s==="connecting" ? "接続処理中" : s==="error" ? "エラー" : "なし");
+  var pill = $("linkStatusPill");
+  pill.classList.toggle("on", s==="connected");
+  pill.classList.toggle("warn", s==="error");
+  $("linkSummary").textContent = s==="connected" ? "接続済み — タップして管理" : (s==="connecting" ? "接続処理中… — タップして管理" : "未接続 — タップして連動セットアップ");
+}
+
+function newPeerConnection(){
+  var pc = new RTCPeerConnection({ iceServers:[{ urls:"stun:stun.l.google.com:19302" }] });
+  pc.oniceconnectionstatechange = function(){
+    if(pc.iceConnectionState==="failed" || pc.iceConnectionState==="disconnected"){ setLinkStatus("error", "接続が切れました"); }
+  };
+  return pc;
+}
+function waitIceComplete(pc){
+  return new Promise(function(resolve){
+    if(pc.iceGatheringState === "complete"){ resolve(); return; }
+    function check(){ if(pc.iceGatheringState==="complete"){ pc.removeEventListener("icegatheringstatechange", check); resolve(); } }
+    pc.addEventListener("icegatheringstatechange", check);
+  });
+}
+function setupDataChannel(dc){
+  linkDC = dc;
+  dc.onopen = function(){ setLinkStatus("connected"); dc.send(JSON.stringify({ type:"hello", mode:mode })); };
+  dc.onclose = function(){ if(linkStatus==="connected") setLinkStatus("idle"); };
+  dc.onmessage = function(ev){
+    var msg; try{ msg = JSON.parse(ev.data); }catch(e){ return; }
+    handleLinkMessage(msg);
+  };
+}
+function handleLinkMessage(msg){
+  if(msg.type === "hello"){ linkPeerMode = msg.mode; setLinkStatus("connected"); return; }
+  if(msg.type === "capture_start"){ runLocalCapture(msg.captureId, false); return; }
+  if(msg.type === "axis_result"){
+    if(pendingJoint && pendingJoint.captureId === msg.captureId){
+      pendingJoint.remote = msg.result;
+      maybeFinishJoint();
+    }
+    return;
+  }
+}
+
+$("linkCreateOfferBtn").addEventListener("click", async function(){
+  setLinkStatus("connecting");
+  linkPC = newPeerConnection();
+  var dc = linkPC.createDataChannel("sz");
+  setupDataChannel(dc);
+  var offer = await linkPC.createOffer();
+  await linkPC.setLocalDescription(offer);
+  await waitIceComplete(linkPC);
+  $("linkOfferOut").value = btoa(JSON.stringify(linkPC.localDescription));
+});
+function copyTextarea(ta){
+  ta.select();
+  if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(ta.value).catch(function(){ document.execCommand && document.execCommand("copy"); }); }
+  else { document.execCommand && document.execCommand("copy"); }
+}
+$("linkCopyOfferBtn").addEventListener("click", function(){ copyTextarea($("linkOfferOut")); });
+$("linkConnectHostBtn").addEventListener("click", async function(){
+  try{
+    var answer = JSON.parse(atob($("linkAnswerIn").value.trim()));
+    await linkPC.setRemoteDescription(answer);
+  }catch(e){ setLinkStatus("error", "応答コードが正しくありません"); }
+});
+
+$("linkCreateAnswerBtn").addEventListener("click", async function(){
+  setLinkStatus("connecting");
+  linkPC = newPeerConnection();
+  linkPC.ondatachannel = function(ev){ setupDataChannel(ev.channel); };
+  try{
+    var offer = JSON.parse(atob($("linkOfferIn").value.trim()));
+    await linkPC.setRemoteDescription(offer);
+    var answer = await linkPC.createAnswer();
+    await linkPC.setLocalDescription(answer);
+    await waitIceComplete(linkPC);
+    $("linkAnswerOut").value = btoa(JSON.stringify(linkPC.localDescription));
+  }catch(e){ setLinkStatus("error", "招待コードが正しくありません"); }
+});
+$("linkCopyAnswerBtn").addEventListener("click", function(){ copyTextarea($("linkAnswerOut")); });
+
+$("linkDisconnectBtn").addEventListener("click", function(){
+  if(linkDC){ try{ linkDC.close(); }catch(e){} }
+  if(linkPC){ try{ linkPC.close(); }catch(e){} }
+  linkDC=null; linkPC=null; linkPeerMode=null;
+  setLinkStatus("idle");
+});
+
+/* real-world (cm) axis measurement from a canvas point, using this device's own calibration */
+function axisResultFromPoint(pt){
+  var c = calib[mode];
+  if(!hasScale(mode)) return null;
+  var pxPerCm = dist(c.scaleA, c.scaleB) / c.realCm;
+  var topY = baseTopY()+c.offsetTop, botY = baseBotY()+c.offsetBot;
+  var zoneHeightCm = (botY-topY)/pxPerCm;
+  var heightCm = (pt.y - topY)/pxPerCm; // 0=zone top, positive=downward
+  var res = { mode:mode, heightCm:heightCm, zoneHeightCm:zoneHeightCm };
+  var leftX = baseLeftX()+c.offsetLeft, rightX = baseRightX()+c.offsetRight;
+  var centerX = (leftX+rightX)/2;
+  var offCm = (pt.x-centerX)/pxPerCm;
+  if(mode==="catcher") res.horizCm = offCm; else res.depthCm = offCm;
+  return res;
+}
+
+function mergeAndJudge(local, remote){
+  var marginCm = BALLS[ballKey].mm/10/2;
+  var plateHalf = PLATE_WIDTH_CM/2;
+  var heights = [local.heightCm]; var zh = [local.zoneHeightCm];
+  if(remote){ heights.push(remote.heightCm); zh.push(remote.zoneHeightCm); }
+  var avgHeight = heights.reduce(function(a,b){return a+b;},0)/heights.length;
+  var zoneHeightCm = zh.reduce(function(a,b){return a+b;},0)/zh.length;
+  var horizCm = local.mode==="catcher" ? local.horizCm : (remote && remote.mode==="catcher" ? remote.horizCm : null);
+  var depthCm = local.mode==="side" ? local.depthCm : (remote && remote.mode==="side" ? remote.depthCm : null);
+
+  var hOK = avgHeight>=0 && avgHeight<=zoneHeightCm;
+  var hMg = avgHeight>=-marginCm && avgHeight<=zoneHeightCm+marginCm;
+  var xOK = horizCm===null ? true : Math.abs(horizCm)<=plateHalf;
+  var xMg = horizCm===null ? true : Math.abs(horizCm)<=plateHalf+marginCm;
+  var dOK = depthCm===null ? true : Math.abs(depthCm)<=plateHalf;
+  var dMg = depthCm===null ? true : Math.abs(depthCm)<=plateHalf+marginCm;
+
+  var judge = (hOK&&xOK&&dOK) ? "strike" : (hMg&&xMg&&dMg) ? "margin" : "ball";
+  var missing = [];
+  if(horizCm===null) missing.push("左右");
+  if(depthCm===null) missing.push("前後");
+  return { judge:judge, heightCm:avgHeight, zoneHeightCm:zoneHeightCm, horizCm:horizCm, depthCm:depthCm, missing:missing };
+}
+
+function runLocalCapture(captureId, isInitiator){
+  var wasRecording = recording;
+  recording = true; recordTrail = []; prevFrameData = null;
+  var start = performance.now();
+  function tick(){
+    if(!recording) return;
+    captureMotionPoint();
+    if(performance.now()-start > 1200){ finishLocalCapture(captureId); return; }
+    requestAnimationFrame(tick);
+  }
+  tick();
+}
+function finishLocalCapture(captureId){
+  recording = false;
+  var pt = recordTrail.length ? recordTrail[recordTrail.length-1] : (lastAutoPoint ? {x:canvas.width/2, y:(lastAutoPoint.topY+lastAutoPoint.botY)/2} : {x:canvas.width/2,y:canvas.height/2});
+  var axis = axisResultFromPoint(pt);
+  if(!pendingJoint || pendingJoint.captureId !== captureId){
+    pendingJoint = { captureId:captureId, local:null, remote:null, point:pt };
+  }
+  pendingJoint.local = axis;
+  pendingJoint.point = pt;
+  if(linkDC && linkDC.readyState==="open"){
+    linkDC.send(JSON.stringify({ type:"axis_result", captureId:captureId, result:axis }));
+  }
+  maybeFinishJoint();
+}
+function maybeFinishJoint(){
+  if(!pendingJoint || !pendingJoint.local) return;
+  clearTimeout(pendingJoint.timer);
+  // give the remote result a short window to arrive; proceed with local-only if it doesn't
+  pendingJoint.timer = setTimeout(function(){
+    if(!pendingJoint) return;
+    var merged = mergeAndJudge(pendingJoint.local, pendingJoint.remote);
+    openPitchModalWithMerge(pendingJoint.point, merged);
+    pendingJoint = null;
+  }, pendingJoint.remote ? 0 : 900);
+}
+
+/* ===================== BLE experimental ===================== */
+$("bleBtn").addEventListener("click", function(){ bleScreen.style.display = "flex"; });
+$("bleCloseBtn").addEventListener("click", function(){ bleScreen.style.display = "none"; });
+$("bleConnectBtn").addEventListener("click", async function(){
+  bleLog.innerHTML = "";
+  if(!navigator.bluetooth){ logBle("このブラウザはWeb Bluetoothに対応していません(iOS Safari非対応。Android Chrome推奨)。"); return; }
+  try{
+    var device = await navigator.bluetooth.requestDevice({ acceptAllDevices:true, optionalServices: [] });
+    logBle("接続対象: " + (device.name || "(名称不明)"));
+    var server = await device.gatt.connect();
+    logBle("GATTサーバーに接続しました。デバイスが公開しているサービスの読み取りには事前のUUID指定がブラウザ仕様上必要です。HOPE社の技術資料にあるService/Characteristic UUIDが分かれば、そのUUIDでの購読処理を追加できます。");
+  }catch(e){
+    logBle("接続に失敗、またはキャンセルされました: " + e.message);
+  }
+});
+function logBle(text){
+  var row = document.createElement("div");
+  row.className = "charRow"; row.innerHTML = '<div class="v">'+text+'</div>';
+  bleLog.appendChild(row);
+}
+
+/* ===================== PWA: service worker + install ===================== */
+if("serviceWorker" in navigator){
+  window.addEventListener("load", function(){ navigator.serviceWorker.register("service-worker.js").catch(function(){}); });
+}
+var deferredPrompt = null;
+window.addEventListener("beforeinstallprompt", function(e){ e.preventDefault(); deferredPrompt = e; $("installRow").style.display = "block"; });
+$("installBtn") && $("installBtn").addEventListener("click", function(){
+  if(!deferredPrompt) return;
+  deferredPrompt.prompt();
+  deferredPrompt.userChoice.finally(function(){ deferredPrompt=null; $("installRow").style.display="none"; });
+});
+(function(){
+  var isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+  var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  if(isIOS && !isStandalone){ $("iosInstallHint").style.display = "block"; }
+})();
+
+</script>
+</body>
+</html>
