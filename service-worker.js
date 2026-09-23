@@ -1,9 +1,9 @@
-// STRIKE ZONE LIVE — service worker (v3: 2台連動モード対応版)
+// STRIKE ZONE LIVE — service worker (v4: 内カメラ・投手側視点 対応版)
 // アプリ本体をキャッシュし、電波の弱い球場でも起動できるようにする。
 // MediaPipeのモデル/WASMは初回読み込み時に取得されるため、以降オフラインでも自動認識が使える。
 // 2台連動(WebRTC)はSTUNサーバーへの到達性が初回接続時に必要。
 
-const CACHE_VERSION = "strikezone-v3";
+const CACHE_VERSION = "strikezone-v4";
 const APP_SHELL = [
   "./",
   "./index.html",

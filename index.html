@@ -158,8 +158,22 @@
       <div class="label">撮影する視点</div>
       <div class="segmented">
         <div class="seg-btn active" data-mode="catcher">キャッチャー後方<span class="sub">高さ・左右（コース）を判定</span></div>
+        <div class="seg-btn" data-mode="pitcher">ピッチャー側<span class="sub">高さ・左右（コース）を判定</span></div>
         <div class="seg-btn" data-mode="side">横方向<span class="sub">高さを判定</span></div>
       </div>
+    </div>
+
+    <div class="field-group">
+      <div class="label">使用するカメラ</div>
+      <div class="segmented">
+        <div class="seg-btn active" data-cam="environment">外カメラ（背面）<span class="sub">通常はこちら</span></div>
+        <div class="seg-btn" data-cam="user">内カメラ（前面）<span class="sub">画面を自分に向けたまま撮影</span></div>
+      </div>
+    </div>
+
+    <div class="rule-card">
+      <div class="k">内カメラについて</div>
+      <p>ピッチャー本人が操作する場合など、画面を自分側に向けたまま前方の打者を捉えたいときは内カメラを選んでください。セルフィー用の左右反転はせず、実際の映像どおりに表示するので、重ね線がずれません。</p>
     </div>
 
     <div class="field-group">
@@ -191,7 +205,7 @@
     </div>
     <div class="rule-card">
       <div class="k">2台連動（立体的判断）の仕組み</div>
-      <p>後方視点の端末は「高さ・左右」、横視点の端末は「高さ・前後」をそれぞれ実寸(cm)で計測します。この2つをP2P通信(サーバー不要のWebRTC・招待コード方式)でリアルタイムに突き合わせることで、高さ・左右・前後の3軸判定を行います。ピクセル単位の映像合成(真のステレオ視)ではなく、実寸換算した数値同士の統合である点にご留意ください。初回接続時のみ多少のネット接続が必要です。</p>
+      <p>後方視点／ピッチャー側視点の端末は「高さ・左右」、横視点の端末は「高さ・前後」をそれぞれ実寸(cm)で計測します。この2つをP2P通信(サーバー不要のWebRTC・招待コード方式)でリアルタイムに突き合わせることで、高さ・左右・前後の3軸判定を行います。ピクセル単位の映像合成(真のステレオ視)ではなく、実寸換算した数値同士の統合である点にご留意ください。初回接続時のみ多少のネット接続が必要です。</p>
     </div>
     <div class="rule-card warn">
       <div class="k">球速計連携について</div>
@@ -271,7 +285,8 @@
       <div class="pill" id="recordBtn">● 投球を記録</div>
       <div class="pill" id="bleBtn">球速計(実験)</div>
       <div class="pill" id="historyBtnCam">履歴</div>
-      <div class="pill" id="swapModeBtn">横⇄後方</div>
+      <div class="pill" id="swapModeBtn">視点切替</div>
+      <div class="pill" id="swapCameraBtn">カメラ切替(内/外)</div>
     </div>
   </div>
 
@@ -341,6 +356,7 @@ var WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/was
 
 /* ===================== state ===================== */
 var mode = "catcher";
+var cameraFacing = "environment";
 var ballKey = "M";
 var autoPoseWanted = true;
 var autoPoseReady = false;
@@ -352,7 +368,10 @@ var lastAutoPoint = null; // {topY,botY,cx}
 
 function blankCalib(){ return { scaleA:null, scaleB:null, realCm:null, shoulder:null, belt:null, knee:null,
   offsetTop:0, offsetBot:0, offsetLeft:0, offsetRight:0 }; }
-var calib = { catcher: blankCalib(), side: blankCalib() };
+var calib = { catcher: blankCalib(), pitcher: blankCalib(), side: blankCalib() };
+function isWidthMode(m){ return m==="catcher" || m==="pitcher"; }
+function modeLabel(m){ return m==="catcher" ? "後方視点" : m==="pitcher" ? "投手側視点" : "横視点"; }
+function modeShort(m){ return m==="catcher" ? "後方" : m==="pitcher" ? "投手側" : "横"; }
 
 var calibrating = false, calibSteps = [], calibIndex = 0;
 var draggingHandle = null;
@@ -373,10 +392,16 @@ var pitchModal=$("pitchModal"), judgeBadge=$("judgeBadge"), speedInput=$("speedI
 var bleScreen=$("bleScreen"), bleLog=$("bleLog");
 
 /* ===================== start screen UI ===================== */
-document.querySelectorAll(".seg-btn").forEach(function(btn){
+document.querySelectorAll(".seg-btn[data-mode]").forEach(function(btn){
   btn.addEventListener("click", function(){
-    document.querySelectorAll(".seg-btn").forEach(function(b){ b.classList.remove("active"); });
+    document.querySelectorAll(".seg-btn[data-mode]").forEach(function(b){ b.classList.remove("active"); });
     btn.classList.add("active"); mode = btn.dataset.mode;
+  });
+});
+document.querySelectorAll(".seg-btn[data-cam]").forEach(function(btn){
+  btn.addEventListener("click", function(){
+    document.querySelectorAll(".seg-btn[data-cam]").forEach(function(b){ b.classList.remove("active"); });
+    btn.classList.add("active"); cameraFacing = btn.dataset.cam;
   });
 });
 document.querySelectorAll(".ball-btn").forEach(function(btn){
@@ -397,7 +422,7 @@ $("historyBackBtn").addEventListener("click", function(){ historyScreen.style.di
 
 function startCamera(){
   var err = $("camError"); err.style.display = "none";
-  var constraintsList = [ { video:{ facingMode:{ ideal:"environment" } }, audio:false }, { video:true, audio:false } ];
+  var constraintsList = [ { video:{ facingMode:{ ideal:cameraFacing } }, audio:false }, { video:true, audio:false } ];
   tryNext(0);
   function tryNext(i){
     if(i >= constraintsList.length){
@@ -430,6 +455,7 @@ function resizeCanvas(){ var r = cameraScreen.getBoundingClientRect(); canvas.wi
 function loadPersistedCalib(){
   try{
     var c = localStorage.getItem("sz_calib_catcher"); if(c) calib.catcher = Object.assign(blankCalib(), JSON.parse(c));
+    var p = localStorage.getItem("sz_calib_pitcher"); if(p) calib.pitcher = Object.assign(blankCalib(), JSON.parse(p));
     var s = localStorage.getItem("sz_calib_side"); if(s) calib.side = Object.assign(blankCalib(), JSON.parse(s));
   }catch(e){}
 }
@@ -505,13 +531,31 @@ function hasBodyPoints(m){ var c = calib[m]; return !!(c.shoulder && c.belt && c
 function hasScale(m){ var c = calib[m]; return !!(c.scaleA && c.scaleB && c.realCm); }
 
 /* ===================== top bar ===================== */
+var MODE_ORDER = ["catcher","pitcher","side"];
 modePill.addEventListener("click", toggleMode);
 $("swapModeBtn").addEventListener("click", toggleMode);
 function toggleMode(){
-  mode = (mode === "catcher") ? "side" : "catcher";
+  var i = MODE_ORDER.indexOf(mode);
+  mode = MODE_ORDER[(i+1) % MODE_ORDER.length];
   updateTopBar();
   if(!hasScale(mode)) beginCalibration(true); else showZoneUI();
 }
+$("swapCameraBtn").addEventListener("click", async function(){
+  var newFacing = cameraFacing === "environment" ? "user" : "environment";
+  try{
+    var s = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ ideal:newFacing } }, audio:false });
+    if(stream){ stream.getTracks().forEach(function(t){ t.stop(); }); }
+    stream = s; video.srcObject = s; cameraFacing = newFacing;
+    // 画角が変わるため、現在の視点のスケール校正だけやり直してもらう(姿勢は自動/既存の点を維持)
+    calib[mode].scaleA = null; calib[mode].scaleB = null; calib[mode].realCm = null;
+    persistCalib(mode);
+    beginCalibration(true, false, true);
+  }catch(e){
+    instructionBar.style.display = "block";
+    calibSteps = [{ key:"__err", text:"カメラの切り替えに失敗しました。この端末は選択したカメラに対応していない可能性があります。" }];
+    calibIndex = 0; calibrating = false; updateStepUI();
+  }
+});
 $("manualCalibBtn").addEventListener("click", function(){ beginCalibration(false, true); });
 $("rescaleBtn").addEventListener("click", function(){ beginCalibration(true, false, true); });
 $("resetOffsetBtn").addEventListener("click", function(){
@@ -524,14 +568,14 @@ $("exitBtn").addEventListener("click", function(){
   instructionBar.style.display = "none"; infoPanel.style.display = "none";
 });
 function updateTopBar(){
-  modePill.textContent = (mode === "catcher") ? "後方視点" : "横視点";
+  modePill.textContent = modeLabel(mode);
   ballPill.textContent = BALLS[ballKey].label + " " + BALLS[ballKey].mm + "mm";
 }
 
 /* ===================== calibration flow (scale always manual; body optional) ===================== */
 function stepsFor(m, includeBody, scaleOnly){
-  var aLabel = (m==="catcher") ? "本塁ベースの左端をタップ" : "本塁ベースの前端（投手側の角）をタップ";
-  var bLabel = (m==="catcher") ? "本塁ベースの右端をタップ" : "本塁ベースの後端の頂点をタップ";
+  var aLabel = isWidthMode(m) ? "本塁ベースの左端をタップ" : "本塁ベースの前端（投手側の角）をタップ";
+  var bLabel = isWidthMode(m) ? "本塁ベースの右端をタップ" : "本塁ベースの後端の頂点をタップ";
   var s = [{key:"scaleA", text:aLabel},{key:"scaleB", text:bLabel}];
   if(scaleOnly) return s;
   if(includeBody){
@@ -607,7 +651,7 @@ function advanceStep(){
   } else { updateStepUI(); }
 }
 function openScaleModal(){
-  scaleHint.textContent = (mode==="catcher") ? "本塁ベース前端の幅（既定 "+PLATE_WIDTH_CM+"cm）でよければそのまま決定してください。" : "本塁ベースの前端から後端の頂点までの長さ（既定 "+PLATE_WIDTH_CM+"cm、前後判定の基準になります）でよければそのまま決定してください。";
+  scaleHint.textContent = isWidthMode(mode) ? "本塁ベース前端の幅（既定 "+PLATE_WIDTH_CM+"cm）でよければそのまま決定してください。" : "本塁ベースの前端から後端の頂点までの長さ（既定 "+PLATE_WIDTH_CM+"cm、前後判定の基準になります）でよければそのまま決定してください。";
   scaleInput.value = PLATE_WIDTH_CM;
   scaleModal.style.display = "flex"; scaleInput.focus();
 }
@@ -642,9 +686,9 @@ function hitTestHandle(pt){
   if(!hasScale(mode)) return null;
   var c = calib[mode];
   var topY = baseTopY()+c.offsetTop, botY = baseBotY()+c.offsetBot;
-  var cx = (mode==="catcher") ? (baseLeftX()+baseRightX())/2 : canvas.width*0.5;
+  var cx = isWidthMode(mode) ? (baseLeftX()+baseRightX())/2 : canvas.width*0.5;
   var cands = { top:{x:cx,y:topY}, bot:{x:cx,y:botY} };
-  if(mode==="catcher"){
+  if(isWidthMode(mode)){
     var midY = (topY+botY)/2;
     cands.left = { x:baseLeftX()+c.offsetLeft, y:midY };
     cands.right = { x:baseRightX()+c.offsetRight, y:midY };
@@ -688,7 +732,7 @@ function draw(){
     var topY = baseTopY() + c.offsetTop;
     var botY = baseBotY() + c.offsetBot;
 
-    if(mode==="catcher"){
+    if(isWidthMode(mode)){
       var leftX = baseLeftX() + c.offsetLeft, rightX = baseRightX() + c.offsetRight;
       strokeRect(leftX, topY, rightX, botY, css("--lime"), false);
       strokeRect(leftX-rPx, topY-rPx, rightX+rPx, botY+rPx, css("--amber"), true);
@@ -700,7 +744,7 @@ function draw(){
       drawHandle(canvas.width*0.5, topY); drawHandle(canvas.width*0.5, botY);
     }
     updateInfoPanel(pxPerCm, rPx, topY, botY);
-    lastAutoPoint = { topY:topY, botY:botY, leftX: mode==="catcher"?baseLeftX()+c.offsetLeft:null, rightX: mode==="catcher"?baseRightX()+c.offsetRight:null, rPx:rPx };
+    lastAutoPoint = { topY:topY, botY:botY, leftX: isWidthMode(mode)?baseLeftX()+c.offsetLeft:null, rightX: isWidthMode(mode)?baseRightX()+c.offsetRight:null, rPx:rPx };
   }
 
   // recording trail
@@ -734,7 +778,7 @@ function updateInfoPanel(pxPerCm, rPx, topY, botY){
     '姿勢ソース: <b>'+src+'</b><br>'+
     'ボール: <b>'+BALLS[ballKey].label+'</b> ('+BALLS[ballKey].mm+'mm) ／ マージン ±<b>'+marginMm.toFixed(1)+'mm</b><br>'+
     'ゾーン高さ: <b>'+zoneHeightCm.toFixed(1)+'cm</b>'+
-    (mode==="side" ? '　※前後(奥行き)は後方視点と併用' : '');
+    (mode==="side" ? '　※左右(コース)は後方視点かピッチャー側視点と併用' : '');
 }
 
 /* ===================== pitch recording (beta trajectory) ===================== */
@@ -817,7 +861,7 @@ function judgeFor(pt){
   var z = lastAutoPoint; if(!z) return "ball";
   var withinV_strict = pt.y >= z.topY && pt.y <= z.botY;
   var withinV_margin = pt.y >= z.topY - z.rPx && pt.y <= z.botY + z.rPx;
-  if(mode==="catcher"){
+  if(isWidthMode(mode)){
     var withinH_strict = pt.x >= z.leftX && pt.x <= z.rightX;
     var withinH_margin = pt.x >= z.leftX - z.rPx && pt.x <= z.rightX + z.rPx;
     if(withinV_strict && withinH_strict) return "strike";
@@ -837,7 +881,7 @@ function updateJudgeBadge(pt){
   pendingPitch.judge = j; pendingPitch.merged = null;
   judgeBadge.className = "judge-badge " + badgeClassFor(j);
   judgeBadge.textContent = "判定: " + badgeTextFor(j);
-  axisBreakdownEl.textContent = (mode==="catcher") ? "この端末単独の判定（高さ・左右）です。前後は未測定です。" : "この端末単独の判定（高さ）です。左右は未測定です。";
+  axisBreakdownEl.textContent = isWidthMode(mode) ? "この端末単独の判定（高さ・左右）です。前後は未測定です。" : "この端末単独の判定（高さ）です。左右は未測定です。";
 }
 function renderMergedBadge(merged){
   judgeBadge.className = "judge-badge " + badgeClassFor(merged.judge);
@@ -926,7 +970,7 @@ function renderHistory(list){
     var t = d.getHours()+":"+String(d.getMinutes()).padStart(2,"0")+":"+String(d.getSeconds()).padStart(2,"0");
     var jClass = r.judge==="strike"?"strike":r.judge==="margin"?"margin":"ball";
     var jText = r.judge==="strike"?"ストライク":r.judge==="margin"?"際どい":"ボール";
-    var modeText = r.mode==="catcher"?"後方":"横";
+    var modeText = modeShort(r.mode);
     var ballText = BALLS[r.ball] ? BALLS[r.ball].label : r.ball;
     return '<div class="hrow"><div class="hj '+jClass+'"></div><div class="hmain"><div>'+jText+'　'+ballText+(r.speed? '　'+r.speed+'km/h':'')+'</div><div class="ht">'+t+' ／ '+modeText+'視点</div></div></div>';
   }).join("");
@@ -970,7 +1014,7 @@ $("linkTabGuest").addEventListener("click", function(){
 
 function setLinkStatus(s, extra){
   linkStatus = s;
-  var label = s==="idle" ? "未接続" : s==="connecting" ? "接続中…" : s==="connected" ? "接続済み" + (linkPeerMode ? "（相手: "+(linkPeerMode==="catcher"?"後方":"横")+"視点）":"") : "エラー";
+  var label = s==="idle" ? "未接続" : s==="connecting" ? "接続中…" : s==="connected" ? "接続済み" + (linkPeerMode ? "（相手: "+modeShort(linkPeerMode)+"視点）":"") : "エラー";
   linkStatusText.textContent = "状態: " + label + (extra ? " — " + extra : "");
   linkStatusPillText.textContent = "連動: " + (s==="connected" ? "接続中" : s==="connecting" ? "接続処理中" : s==="error" ? "エラー" : "なし");
   var pill = $("linkStatusPill");
@@ -1071,7 +1115,7 @@ function axisResultFromPoint(pt){
   var leftX = baseLeftX()+c.offsetLeft, rightX = baseRightX()+c.offsetRight;
   var centerX = (leftX+rightX)/2;
   var offCm = (pt.x-centerX)/pxPerCm;
-  if(mode==="catcher") res.horizCm = offCm; else res.depthCm = offCm;
+  if(isWidthMode(mode)) res.horizCm = offCm; else res.depthCm = offCm;
   return res;
 }
 
@@ -1082,7 +1126,7 @@ function mergeAndJudge(local, remote){
   if(remote){ heights.push(remote.heightCm); zh.push(remote.zoneHeightCm); }
   var avgHeight = heights.reduce(function(a,b){return a+b;},0)/heights.length;
   var zoneHeightCm = zh.reduce(function(a,b){return a+b;},0)/zh.length;
-  var horizCm = local.mode==="catcher" ? local.horizCm : (remote && remote.mode==="catcher" ? remote.horizCm : null);
+  var horizCm = isWidthMode(local.mode) ? local.horizCm : (remote && isWidthMode(remote.mode) ? remote.horizCm : null);
   var depthCm = local.mode==="side" ? local.depthCm : (remote && remote.mode==="side" ? remote.depthCm : null);
 
   var hOK = avgHeight>=0 && avgHeight<=zoneHeightCm;
